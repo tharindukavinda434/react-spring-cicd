@@ -1,16 +1,20 @@
 package com.example.backend;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.context.annotation.Import;
+import org.mockito.Mockito;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
-@SpringBootTest
-@ActiveProfiles("test")
-@Import(TestConfiguration.class)
-class Lab12BackendApplicationTests {
+import javax.sql.DataSource;
 
-    @Test
-    void contextLoads() {
+@Configuration
+@Profile("test")
+public class TestConfiguration {
+
+    @Bean
+    public DataSource dataSource() {
+        return Mockito.mock(DataSource.class);
     }
+
+    // Mock other beans as needed
 }
