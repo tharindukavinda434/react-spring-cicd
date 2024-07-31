@@ -1,77 +1,90 @@
 name: Backend CI/CD
 
 on:
-  push:
-    paths:
-      - 'backend/**'
-  pull_request:
-    paths:
-      - 'backend/**'
-  workflow_dispatch:
+    push:
+      branches:
+        - main
+      paths:
+        - 'backend/**'
+        - 'backend.yml'
+    pull_request:
+      branches:
+        - main
+      paths:
+        - 'backend/**'
+        - 'backend.yml'
+    workflow_dispatch:
+  
 
 jobs:
-  build-and-deploy:
+  test:
     runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        ports:
-          - 3306:3306
-        env:
-          MYSQL_ROOT_PASSWORD: P@ssw0rd
-          MYSQL_USER: product_user
-          MYSQL_PASSWORD: product_user_password
-          MYSQL_DATABASE: product
-        options: >-
-          --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v2
-      with:
-        distribution: 'adopt'
-        java-version: '17'
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
 
-    - name: Wait for MySQL to be ready
-      run: |
-        for i in {30..0}; do
-          if docker exec mysql mysqladmin ping --silent &> /dev/null; then
-            break
-          fi
-          echo 'MySQL is unavailable - sleeping'
-          sleep 1
-        done
-        if [ "$i" = 0 ]; then
-          echo 'MySQL did not become available in time' >&2
-          exit 1
-        fi
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-    - name: Build with Maven
-      run: mvn -f backend/pom.xml clean install -e
-      env:
-        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/product
-        SPRING_DATASOURCE_USERNAME: product_user
-        SPRING_DATASOURCE_PASSWORD: product_user_password
+      - name: Build with Maven
+        run: mvn clean install
 
-    - name: Run Tests
-      run: mvn -f backend/pom.xml test -e
-      env:
-        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/product
-        SPRING_DATASOURCE_USERNAME: product_user
-        SPRING_DATASOURCE_PASSWORD: product_user_password
+      - name: Run tests
+        run: mvn test
 
-    - name: Build Docker Image
-      run: docker build -t your-dockerhub-username/backend:latest ./backend
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Log in to Docker Hub
-      run: echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
 
-    - name: Push Docker Image
-      run: docker push your-dockerhub-username/backend:latest
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v3
+        with:
+          name: spring-boot-app
+          path: target/*.jar
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download JAR
+        uses: actions/download-artifact@v3
+        with:
+          name: spring-boot-app
+
+      - name: Deploy
+        run: echo "Deploying..."
+        # Add your deployment commands here, for example:
+        # scp target/*.jar user@your-server:/path/to/deploy
+        # ssh user@your-server 'java -jar /path/to/deploy/your-app.jar'
+
